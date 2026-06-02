@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ParkVision</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+
+<div class="d-flex" id="wrapper">
+
+  <!-- SIDEBAR -->
+  <nav id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><i class="bi bi-camera-video-fill"></i></div>
+      <div>
+        <div class="brand-name">ParkVision</div>
+        <div class="brand-sub">SISTEMA DE PARQUEO</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">PRINCIPAL</div>
+    <a class="sidebar-link active" data-page="dashboard" onclick="nav('dashboard')">
+      <i class="bi bi-grid-1x2"></i> Dashboard
+    </a>
+    <a class="sidebar-link" data-page="camera" onclick="nav('camera')">
+      <i class="bi bi-camera-video"></i> Camara Live
+      <span class="badge bg-secondary ms-auto" id="cam-badge">OFF</span>
+    </a>
+    <a class="sidebar-link" data-page="scanner" onclick="nav('scanner')">
+      <i class="bi bi-upc-scan"></i> Escaner
+    </a>
+
+    <div class="sidebar-section mt-3">OPERACION</div>
+    <a class="sidebar-link" data-page="inside" onclick="nav('inside')">
+      <i class="bi bi-car-front"></i> Vehiculos Dentro
+      <span class="badge bg-success ms-auto" id="inside-badge">0</span>
+    </a>
+    <a class="sidebar-link" data-page="vehicles" onclick="nav('vehicles')">
+      <i class="bi bi-people"></i> Vehiculos
+    </a>
+    <a class="sidebar-link" data-page="history" onclick="nav('history')">
+      <i class="bi bi-clock-history"></i> Historial
+    </a>
+    <a class="sidebar-link" data-page="slots" onclick="nav('slots')">
+      <i class="bi bi-grid-3x3"></i> Planta
+    </a>
+
+    <div class="sidebar-footer">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-txt">Modo Demo</span>
+    </div>
+  </nav>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="pg-dashboard">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Dashboard</h4>
+          <p class="page-sub mb-0" id="clock">—</p>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" onclick="refreshAll()">
+          <i class="bi bi-arrow-clockwise"></i> Actualizar
+        </button>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card border-success">
+            <div class="stat-icon bg-success-subtle text-success"><i class="bi bi-p-square"></i></div>
+            <div><span class="stat-val" id="s-free">—</span><span class="stat-lbl">Espacios libres</span></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card border-primary">
+            <div class="stat-icon bg-primary-subtle text-primary"><i class="bi bi-car-front"></i></div>
+            <div><span class="stat-val" id="s-occ">—</span><span class="stat-lbl">Vehiculos dentro</span></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card border-purple">
+            <div class="stat-icon bg-purple-subtle text-purple"><i class="bi bi-calendar-check"></i></div>
+            <div><span class="stat-val" id="s-today">—</span><span class="stat-lbl">Entradas hoy</span></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card border-warning">
+            <div class="stat-icon bg-warning-subtle text-warning"><i class="bi bi-exclamation-triangle"></i></div>
+            <div><span class="stat-val text-warning" id="s-unk">—</span><span class="stat-lbl">Desconocidos hoy</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-lg-8">
+          <div class="card h-100">
+            <div class="card-header">Ultimas Detecciones</div>
+            <div class="card-body p-0">
+              <div id="dash-feed" class="feed-list">
+                <p class="text-center text-muted py-4 mb-0">Sin eventos aun</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-header">Ocupacion</div>
+            <div class="card-body d-flex flex-column align-items-center justify-content-center gap-3">
+              <div class="donut-wrap position-relative">
+                <svg width="150" height="150" viewBox="0 0 150 150">
+                  <circle cx="75" cy="75" r="55" fill="none" stroke="var(--bs-border-color)" stroke-width="10"/>
+                  <circle id="donut-arc" cx="75" cy="75" r="55" fill="none"
+                    stroke="var(--bs-success)" stroke-width="10" stroke-linecap="round"
+                    stroke-dasharray="0 346" stroke-dashoffset="87"
+                    transform="rotate(-90 75 75)" style="transition:stroke-dasharray 1s ease"/>
+                </svg>
+                <div class="donut-center">
+                  <span class="fw-bold fs-4 text-success" id="donut-pct">0%</span>
+                  <small class="text-muted">ocupado</small>
+                </div>
+              </div>
+              <div class="w-100">
+                <div class="d-flex justify-content-between mb-1 small">
+                  <span><span class="badge bg-success me-1">&nbsp;</span>Ocupado</span>
+                  <strong id="leg-occ">0</strong>
+                </div>
+                <div class="d-flex justify-content-between small">
+                  <span><span class="badge bg-secondary me-1">&nbsp;</span>Libre</span>
+                  <strong id="leg-free">0</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAMARA -->
+    <div class="page" id="pg-camera">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Camara en Tiempo Real</h4>
+          <p class="page-sub mb-0">Deteccion automatica de matriculas por movimiento</p>
+        </div>
+        <span class="badge rounded-pill" id="cam-status-pill">Desconectada</span>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="row g-3 align-items-end">
+            <div class="col-auto">
+              <label class="form-label fw-semibold small">Fuente de camara</label>
+              <select class="form-select form-select-sm" id="cam-mode" onchange="onCamModeChange()" style="min-width:200px">
+                <option value="browser">Camara del Navegador</option>
+                <option value="webcam">Webcam del Servidor</option>
+                <option value="ip">Camara IP / RTSP</option>
+              </select>
+            </div>
+            <div class="col-auto" id="cfg-index">
+              <label class="form-label fw-semibold small">Indice (0 = primera)</label>
+              <input type="number" class="form-control form-control-sm" id="cam-index" value="0" min="0" max="9" style="width:80px">
+            </div>
+            <div class="col" id="cfg-url" style="display:none">
+              <label class="form-label fw-semibold small">URL RTSP / HTTP</label>
+              <input type="text" class="form-control form-control-sm" id="cam-url" placeholder="rtsp://192.168.1.x:554/stream">
+            </div>
+            <div class="col-auto">
+              <button class="btn btn-success btn-sm" id="btn-cam" onclick="toggleCam()">
+                <i class="bi bi-play-fill"></i> Iniciar Camara
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-lg-8">
+          <div class="cam-wrap" id="cam-wrap">
+            <div class="cam-placeholder" id="cam-placeholder">
+              <i class="bi bi-camera-video-off fs-1 text-muted"></i>
+              <p class="text-muted mt-2">Selecciona una fuente e inicia la camara</p>
+            </div>
+            <img id="cam-mjpeg" style="display:none;width:100%;height:100%;object-fit:cover" src="">
+            <video id="cam-video" autoplay muted playsinline style="display:none;width:100%;height:100%;object-fit:cover"></video>
+            <canvas id="cam-canvas" style="display:none"></canvas>
+            <div id="cam-hud" style="display:none;position:absolute;inset:0;pointer-events:none">
+              <div class="hud-bar d-flex justify-content-between align-items-center px-3 py-1">
+                <small id="hud-clock" class="text-white-50 font-monospace">—</small>
+                <small id="hud-motion" class="text-success font-monospace fw-bold">EN VIVO</small>
+              </div>
+              <div class="hud-roi" id="hud-roi"></div>
+            </div>
+          </div>
+          <div class="card mt-2">
+            <div class="card-body py-2">
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <button class="btn btn-outline-secondary btn-sm" id="btn-capture" onclick="captureNow()" disabled>
+                  <i class="bi bi-camera"></i> Capturar
+                </button>
+                <span class="badge bg-dark font-monospace" id="chip-fps">FPS —</span>
+                <span class="badge bg-dark font-monospace" id="chip-res">— x —</span>
+                <span class="badge bg-secondary" id="chip-motion">SIN MOVIMIENTO</span>
+                <div class="form-check form-switch ms-auto mb-0">
+                  <input class="form-check-input" type="checkbox" id="auto-tog" checked>
+                  <label class="form-check-label small" for="auto-tog">Auto-deteccion</label>
+                </div>
+                <div class="d-flex align-items-center gap-2 small text-muted">
+                  Cooldown:
+                  <input type="range" class="form-range" id="cooldown" min="3" max="30" value="8"
+                    style="width:80px" oninput="document.getElementById('cool-val').textContent=this.value">
+                  <span id="cool-val">8</span>s
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span class="fw-semibold small">DETECCIONES</span>
+              <button class="btn btn-link btn-sm text-muted p-0" onclick="clearDets()">Limpiar</button>
+            </div>
+            <div id="det-list" class="det-list">
+              <p class="text-center text-muted small py-4 mb-0">Las detecciones apareceran aqui automaticamente</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ESCANER -->
+    <div class="page" id="pg-scanner">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Escaner de Matriculas</h4>
+          <p class="page-sub mb-0">Sube una imagen o ingresa la placa manualmente</p>
+        </div>
+      </div>
+      <div class="row g-4">
+        <div class="col-lg-6">
+          <div class="drop-zone" id="drop-zone">
+            <div id="drop-content">
+              <i class="bi bi-cloud-upload fs-1 text-muted"></i>
+              <p class="mt-2 mb-1">Arrastra una imagen del vehiculo</p>
+              <small class="text-muted">PNG, JPG, JPEG o haz clic para seleccionar</small>
+            </div>
+            <img id="preview-img" style="display:none;width:100%;border-radius:8px;object-fit:cover;max-height:280px">
+            <input type="file" id="file-in" accept="image/*" style="display:none">
+          </div>
+          <button class="btn btn-success w-100 mt-3" id="btn-scan" onclick="scanUpload()" disabled>
+            <i class="bi bi-upc-scan"></i> Reconocer Matricula
+          </button>
+          <div class="divider my-3"><span>o ingresa manualmente</span></div>
+          <div class="input-group">
+            <input type="text" class="form-control font-monospace" id="manual-plate"
+              placeholder="ABC-123" maxlength="12" oninput="this.value=this.value.toUpperCase()">
+            <button class="btn btn-outline-secondary" onclick="manualEntry()">Registrar</button>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="result-panel" id="result-panel">
+            <div class="text-center text-muted">
+              <i class="bi bi-card-text fs-1"></i>
+              <p class="mt-2">El resultado aparecera aqui</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DENTRO -->
+    <div class="page" id="pg-inside">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Vehiculos Dentro</h4>
+          <p class="page-sub mb-0">Actualizacion automatica cada 15 segundos</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-dark"><tr>
+              <th>Matricula</th><th>Propietario</th><th>Espacio</th>
+              <th>Entrada</th><th>Duracion</th><th>Estado</th>
+            </tr></thead>
+            <tbody id="inside-tbody">
+              <tr><td colspan="6" class="text-center text-muted py-4">No hay vehiculos dentro</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VEHICULOS -->
+    <div class="page" id="pg-vehicles">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Vehiculos Registrados</h4>
+          <p class="page-sub mb-0">Base de datos autorizada</p>
+        </div>
+        <button class="btn btn-success btn-sm" onclick="openVehicleModal()">
+          <i class="bi bi-plus-lg"></i> Agregar
+        </button>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-dark"><tr>
+              <th>Matricula</th><th>Propietario</th><th>Vehiculo</th>
+              <th>Color</th><th>Año</th><th>Estado</th><th></th>
+            </tr></thead>
+            <tbody id="vehicles-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORIAL -->
+    <div class="page" id="pg-history">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Historial de Accesos</h4>
+          <p class="page-sub mb-0">Registro completo de entradas y salidas</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-dark"><tr>
+              <th>Matricula</th><th>Propietario</th><th>Evento</th>
+              <th>Entrada</th><th>Salida</th><th>Espacio</th><th>Confianza</th><th>Fuente</th>
+            </tr></thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLANTA -->
+    <div class="page" id="pg-slots">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Planta del Parqueo</h4>
+          <p class="page-sub mb-0">Vista de disponibilidad en tiempo real</p>
+        </div>
+      </div>
+      <h6 class="text-muted fw-semibold mb-2 text-uppercase small tracking-wide">Nivel A</h6>
+      <div class="slots-grid mb-4" id="slots-A"></div>
+      <h6 class="text-muted fw-semibold mb-2 text-uppercase small tracking-wide">Nivel B</h6>
+      <div class="slots-grid" id="slots-B"></div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /wrapper -->
+
+<!-- MODAL VEHICULO -->
+<div class="modal fade" id="vehicleModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Registrar Vehiculo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label small fw-semibold">Matricula *</label>
+            <input class="form-control" id="f-plate" oninput="this.value=this.value.toUpperCase()" placeholder="ABC-123"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Propietario</label>
+            <input class="form-control" id="f-name" placeholder="Nombre completo"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">N Documento</label>
+            <input class="form-control" id="f-doc" placeholder="DNI / RUC"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Marca</label>
+            <input class="form-control" id="f-brand" placeholder="Toyota, Kia..."></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Modelo</label>
+            <input class="form-control" id="f-model" placeholder="Corolla..."></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Color</label>
+            <input class="form-control" id="f-color" placeholder="Blanco, Negro..."></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Año</label>
+            <input class="form-control" id="f-year" type="number" placeholder="2024"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Tipo</label>
+            <select class="form-select" id="f-type">
+              <option value="car">Auto</option>
+              <option value="truck">Camioneta</option>
+              <option value="motorcycle">Moto</option>
+            </select></div>
+          <div class="col-12"><label class="form-label small fw-semibold">Notas</label>
+            <textarea class="form-control" id="f-notes" rows="2" placeholder="Observaciones..."></textarea></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success" onclick="saveVehicle()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="toast" class="toast" role="alert">
+    <div class="toast-header">
+      <strong class="me-auto font-monospace" id="toast-plate">—</strong>
+      <small id="toast-time">ahora</small>
+      <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+    </div>
+    <div class="toast-body" id="toast-info">—</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/main.js"></script>
+</body>
+</html>

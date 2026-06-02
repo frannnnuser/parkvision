@@ -1,0 +1,2337 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/__init__.py
+app/api/__init__.py
+app/api/_helpers.py
+app/api/camera.py
+app/api/dashboard.py
+app/api/records.py
+app/api/slots.py
+app/api/vehicles.py
+app/models/__init__.py
+app/models/record.py
+app/models/slot.py
+app/models/vehicle.py
+app/services/__init__.py
+app/services/camera.py
+app/services/parking.py
+app/services/plate_recognizer.py
+instance/parkvision.db
+README.md
+requirements.txt
+run.py
+static/css/main.css
+static/js/main.js
+static/uploads/browser_20260602_005234_191573.jpg
+static/uploads/browser_20260602_005241_830114.jpg
+static/uploads/browser_20260602_005250_317751.jpg
+static/uploads/browser_20260602_005259_782109.jpg
+static/uploads/browser_20260602_005308_274696.jpg
+static/uploads/browser_20260602_005316_394167.jpg
+static/uploads/browser_20260602_005324_779347.jpg
+static/uploads/browser_20260602_005332_773666.jpg
+static/uploads/browser_20260602_005341_359716.jpg
+static/uploads/browser_20260602_005349_607785.jpg
+static/uploads/browser_20260602_005357_906450.jpg
+static/uploads/browser_20260602_005405_885853.jpg
+static/uploads/browser_20260602_005414_286432.jpg
+static/uploads/browser_20260602_005422_298075.jpg
+static/uploads/browser_20260602_010333_524409.jpg
+static/uploads/browser_20260602_010404_734639.jpg
+static/uploads/browser_20260602_010433_139886.jpg
+static/uploads/browser_20260602_010434_679272.jpg
+static/uploads/browser_20260602_010504_614140.jpg
+static/uploads/upload_OIP.webp
+static/uploads/upload_Pasos-para-encontrar-un-vehiculo-por-sus-placas.webp
+templates/index.html
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/__init__.py">
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+
+db = SQLAlchemy()
+migrate = Migrate()
+
+
+def create_app(config=None):
+    app = Flask(__name__, template_folder="../templates", static_folder="../static")
+
+    # ── Default config ────────────────────────────────────────────────────────
+    app.config.setdefault("SECRET_KEY", "change-me-in-production")
+    app.config.setdefault("SQLALCHEMY_DATABASE_URI", "sqlite:///parkvision.db")
+    app.config.setdefault("SQLALCHEMY_TRACK_MODIFICATIONS", False)
+    app.config.setdefault("UPLOAD_FOLDER", "static/uploads")
+    app.config.setdefault("MAX_CONTENT_LENGTH", 16 * 1024 * 1024)
+    app.config.setdefault("PLATE_API_KEY", "")
+    app.config.setdefault("CAMERA_COOLDOWN", 8)
+    app.config.setdefault("MOTION_THRESHOLD", 3000)
+
+    if config:
+        app.config.update(config)
+
+    db.init_app(app)
+    migrate.init_app(app, db)
+
+    import os
+    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+    # ── Register blueprints ───────────────────────────────────────────────────
+    from .api.vehicles import bp as vehicles_bp
+    from .api.records import bp as records_bp
+    from .api.camera import bp as camera_bp
+    from .api.dashboard import bp as dashboard_bp
+    from .api.slots import bp as slots_bp
+
+    app.register_blueprint(vehicles_bp,  url_prefix="/api/vehicles")
+    app.register_blueprint(records_bp,   url_prefix="/api/records")
+    app.register_blueprint(camera_bp,    url_prefix="/api/camera")
+    app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
+    app.register_blueprint(slots_bp,     url_prefix="/api/slots")
+
+    # ── Main UI route ─────────────────────────────────────────────────────────
+    from flask import render_template
+
+    @app.route("/")
+    def index():
+        return render_template("index.html")
+
+    # ── DB seed on first run ──────────────────────────────────────────────────
+    with app.app_context():
+        db.create_all()
+        _seed(app)
+
+    return app
+
+
+def _seed(app):
+    from .models.slot import ParkingSlot
+    from .models.vehicle import Vehicle
+
+    if ParkingSlot.query.count() == 0:
+        slots = [
+            ParkingSlot(code=f"{'AB'[lvl]}{i:02d}", level=lvl + 1)
+            for lvl in range(2)
+            for i in range(1, 16)
+        ]
+        db.session.add_all(slots)
+
+    if Vehicle.query.count() == 0:
+        samples = [
+            ("ABC-123", "Carlos Mendoza",  "Toyota",     "Corolla",  "Blanco", 2020),
+            ("DEF-456", "María García",    "Hyundai",    "Tucson",   "Negro",  2021),
+            ("GHI-789", "Pedro Rojas",     "Kia",        "Sportage", "Rojo",   2019),
+            ("JKL-012", "Ana Torres",      "Volkswagen", "Golf",     "Plata",  2022),
+            ("MNO-345", "Luis Castillo",   "Nissan",     "Sentra",   "Azul",   2018),
+        ]
+        vehicles = [
+            Vehicle(plate=p, owner_name=n, brand=b, model=m, color=c, year=y)
+            for p, n, b, m, c, y in samples
+        ]
+        db.session.add_all(vehicles)
+
+    db.session.commit()
+</file>
+
+<file path="app/api/__init__.py">
+from .dashboard import bp as dashboard_bp
+from .vehicles  import bp as vehicles_bp
+from .records   import bp as records_bp
+from .camera    import bp as camera_bp
+from .slots     import bp as slots_bp
+
+__all__ = ["dashboard_bp", "vehicles_bp", "records_bp", "camera_bp", "slots_bp"]
+</file>
+
+<file path="app/api/_helpers.py">
+from flask import jsonify
+from functools import wraps
+from werkzeug.exceptions import HTTPException
+
+
+def success(data=None, status=200, **kwargs):
+    body = {"ok": True}
+    if data is not None:
+        body["data"] = data
+    body.update(kwargs)
+    return jsonify(body), status
+
+
+def error(message: str, status: int = 400):
+    return jsonify({"ok": False, "error": message}), status
+
+
+def validate_json(*required_fields):
+    """Decorator: ensures request JSON exists and contains required fields."""
+    from flask import request
+
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            data = request.get_json(silent=True)
+            if data is None:
+                return error("Request body must be JSON", 400)
+            missing = [f for f in required_fields if f not in data]
+            if missing:
+                return error(f"Missing fields: {', '.join(missing)}", 400)
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+</file>
+
+<file path="app/api/camera.py">
+import json
+import queue
+import time
+from flask import Blueprint, request, Response, current_app, stream_with_context
+from ..services           import camera as cam_svc
+from ..services.plate_recognizer import recognize
+from ..services.parking   import process_plate
+from ._helpers            import success, error
+
+bp           = Blueprint("camera", __name__)
+_event_queue = queue.Queue(maxsize=100)
+
+
+def _on_motion(snap_path: str):
+    from run import app
+    result = recognize(snap_path)
+    with app.app_context():
+        try:
+            event = process_plate(
+                plate      = result.plate,
+                confidence = result.confidence,
+                image_path = snap_path,
+                source     = "camera",
+                simulated  = result.simulated,
+            )
+            _push(event.to_dict())
+        except Exception as e:
+            current_app.logger.error("Camera detection error: %s", e)
+
+
+def _push(data):
+    try:
+        _event_queue.put_nowait(data)
+    except queue.Full:
+        _event_queue.get_nowait()
+        _event_queue.put_nowait(data)
+
+
+@bp.post("/start")
+def start():
+    d        = request.get_json(silent=True) or {}
+    cooldown = int(current_app.config.get("CAMERA_COOLDOWN", 8))
+    ok, msg  = cam_svc.start(
+        mode      = d.get("mode", "webcam"),
+        index     = int(d.get("index", 0)),
+        url       = d.get("url", ""),
+        cooldown  = cooldown,
+        on_motion = _on_motion,
+    )
+    return success({"message": msg}) if ok else error(msg, 409)
+
+
+@bp.post("/stop")
+def stop():
+    ok, msg = cam_svc.stop()
+    return success({"message": msg})
+
+
+@bp.get("/status")
+def status():
+    return success(cam_svc.get_status())
+
+
+@bp.post("/capture")
+def capture():
+    path = cam_svc.capture_frame()
+    if not path:
+        b64 = (request.get_json(silent=True) or {}).get("frame_b64", "")
+        if b64:
+            path = cam_svc.save_b64_frame(b64)
+    if not path:
+        return error("No active camera frame", 422)
+
+    result = recognize(path)
+    event  = process_plate(
+        plate      = result.plate,
+        confidence = result.confidence,
+        image_path = path,
+        source     = "camera",
+        simulated  = result.simulated,
+    )
+    _push(event.to_dict())
+    return success(event.to_dict())
+
+
+@bp.get("/stream")
+def stream():
+    def generate():
+        while cam_svc.get_status()["running"]:
+            jpg = cam_svc.get_frame()
+            if jpg:
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
+            time.sleep(0.033)
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+@bp.get("/events")
+def events():
+    def generate():
+        yield "retry: 2000\n\n"
+        while True:
+            try:
+                ev = _event_queue.get(timeout=20)
+                yield f"data: {json.dumps(ev)}\n\n"
+            except queue.Empty:
+                yield ": ping\n\n"
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+</file>
+
+<file path="app/api/dashboard.py">
+from flask import Blueprint
+from ..services.parking  import get_stats
+from ..models.record     import ParkingRecord
+from ._helpers           import success
+
+bp = Blueprint("dashboard", __name__)
+
+
+@bp.get("/stats")
+def stats():
+    return success(get_stats())
+
+
+@bp.get("/inside")
+def inside():
+    records = ParkingRecord.query.filter_by(status="inside").all()
+    return success([r.to_dict() for r in records])
+</file>
+
+<file path="app/api/records.py">
+import os
+from flask import Blueprint, request, current_app
+from werkzeug.utils import secure_filename
+from ..services.plate_recognizer import recognize
+from ..services.parking          import process_plate
+from ._helpers                   import success, error
+
+bp      = Blueprint("records", __name__)
+ALLOWED = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
+
+
+@bp.get("/")
+def list_records():
+    from ..models.record import ParkingRecord
+    limit = min(int(request.args.get("limit", 100)), 500)
+    rows  = ParkingRecord.query.order_by(
+        ParkingRecord.entry_time.desc()
+    ).limit(limit).all()
+    return success([r.to_dict() for r in rows])
+
+
+@bp.post("/upload")
+def upload_image():
+    if "image" not in request.files:
+        return error("No image provided")
+    file = request.files["image"]
+    ext  = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in ALLOWED:
+        return error("Invalid file type")
+
+    upload_dir = current_app.config["UPLOAD_FOLDER"]
+    filename   = f"upload_{secure_filename(file.filename)}"
+    filepath   = os.path.join(upload_dir, filename)
+    file.save(filepath)
+
+    result = recognize(filepath)
+    event  = process_plate(
+        plate      = result.plate,
+        confidence = result.confidence,
+        image_path = filepath,
+        source     = "upload",
+        simulated  = result.simulated,
+    )
+    return success(event.to_dict())
+
+
+@bp.post("/manual")
+def manual_entry():
+    data  = request.get_json(silent=True) or {}
+    plate = data.get("plate", "").upper().strip()
+    if not plate:
+        return error("plate is required")
+    event = process_plate(plate=plate, source="manual")
+    return success(event.to_dict())
+</file>
+
+<file path="app/api/slots.py">
+from flask import Blueprint
+from ..models.slot import ParkingSlot
+from ._helpers     import success
+
+bp = Blueprint("slots", __name__)
+
+
+@bp.get("/")
+def list_slots():
+    slots = ParkingSlot.query.order_by(ParkingSlot.level, ParkingSlot.code).all()
+    return success([s.to_dict() for s in slots])
+</file>
+
+<file path="app/api/vehicles.py">
+from flask import Blueprint, request
+from .. import db
+from ..models.vehicle import Vehicle
+from ._helpers        import success, error, validate_json
+
+bp = Blueprint("vehicles", __name__)
+
+
+@bp.get("/")
+def list_vehicles():
+    vehicles = Vehicle.query.order_by(Vehicle.created_at.desc()).all()
+    return success([v.to_dict() for v in vehicles])
+
+
+@bp.post("/")
+@validate_json("plate")
+def create_vehicle():
+    data  = request.get_json()
+    plate = data["plate"].upper().strip()
+
+    if Vehicle.query.filter_by(plate=plate).first():
+        return error("Plate already registered", 409)
+
+    vehicle = Vehicle(
+        plate        = plate,
+        owner_name   = data.get("owner_name"),
+        owner_doc    = data.get("owner_doc"),
+        brand        = data.get("brand"),
+        model        = data.get("model"),
+        color        = data.get("color"),
+        year         = data.get("year"),
+        vehicle_type = data.get("vehicle_type", "car"),
+        authorized   = data.get("authorized", True),
+        notes        = data.get("notes"),
+    )
+    db.session.add(vehicle)
+    db.session.commit()
+    return success(vehicle.to_dict(), 201)
+
+
+@bp.get("/<int:vid>")
+def get_vehicle(vid):
+    vehicle = Vehicle.query.get_or_404(vid)
+    return success(vehicle.to_dict())
+
+
+@bp.patch("/<int:vid>")
+def update_vehicle(vid):
+    vehicle = Vehicle.query.get_or_404(vid)
+    data    = request.get_json(silent=True) or {}
+    fields  = ["owner_name", "owner_doc", "brand", "model",
+               "color", "year", "vehicle_type", "authorized", "notes"]
+    for field in fields:
+        if field in data:
+            setattr(vehicle, field, data[field])
+    db.session.commit()
+    return success(vehicle.to_dict())
+
+
+@bp.delete("/<int:vid>")
+def delete_vehicle(vid):
+    vehicle = Vehicle.query.get_or_404(vid)
+    db.session.delete(vehicle)
+    db.session.commit()
+    return success({"deleted": vid})
+</file>
+
+<file path="app/models/__init__.py">
+from .vehicle import Vehicle
+from .record  import ParkingRecord
+from .slot    import ParkingSlot
+
+__all__ = ["Vehicle", "ParkingRecord", "ParkingSlot"]
+</file>
+
+<file path="app/models/record.py">
+from datetime import datetime
+from .. import db
+
+
+class ParkingRecord(db.Model):
+    __tablename__ = "parking_records"
+
+    id         = db.Column(db.Integer,   primary_key=True)
+    plate      = db.Column(db.String(20), nullable=False, index=True)
+    vehicle_id = db.Column(db.Integer,   db.ForeignKey("vehicles.id"), nullable=True)
+    slot_code  = db.Column(db.String(10))
+    entry_time = db.Column(db.DateTime,  default=datetime.utcnow, nullable=False)
+    exit_time  = db.Column(db.DateTime,  nullable=True)
+    status     = db.Column(db.String(10), default="inside",  nullable=False)   # inside | exited
+    event_type = db.Column(db.String(10), default="entry",   nullable=False)   # entry  | exit
+    is_known   = db.Column(db.Boolean,   default=False,      nullable=False)
+    confidence = db.Column(db.Float,     nullable=True)
+    image_path = db.Column(db.String(200))
+    source     = db.Column(db.String(20), default="manual")  # manual | upload | camera
+
+    vehicle = db.relationship("Vehicle", back_populates="records")
+
+    @property
+    def duration_minutes(self):
+        end = self.exit_time or datetime.utcnow()
+        return int((end - self.entry_time).total_seconds() / 60)
+
+    def to_dict(self):
+        return {
+            "id":               self.id,
+            "plate":            self.plate,
+            "slot_code":        self.slot_code,
+            "entry_time":       self.entry_time.isoformat(),
+            "exit_time":        self.exit_time.isoformat() if self.exit_time else None,
+            "status":           self.status,
+            "event_type":       self.event_type,
+            "is_known":         self.is_known,
+            "confidence":       self.confidence,
+            "source":           self.source,
+            "duration_minutes": self.duration_minutes,
+            "owner_name":       self.vehicle.owner_name if self.vehicle else None,
+            "vehicle":          self.vehicle.to_dict()  if self.vehicle else None,
+        }
+
+    def __repr__(self):
+        return f"<ParkingRecord {self.plate} {self.event_type}>"
+</file>
+
+<file path="app/models/slot.py">
+from .. import db
+
+
+class ParkingSlot(db.Model):
+    __tablename__ = "parking_slots"
+
+    id       = db.Column(db.Integer,   primary_key=True)
+    code     = db.Column(db.String(10), unique=True, nullable=False)
+    level    = db.Column(db.Integer,   default=1,    nullable=False)
+    occupied = db.Column(db.Boolean,   default=False, nullable=False)
+    plate    = db.Column(db.String(20), nullable=True)
+
+    @classmethod
+    def assign(cls, plate: str):
+        slot = cls.query.filter_by(occupied=False).first()
+        if slot:
+            slot.occupied = True
+            slot.plate    = plate
+        return slot
+
+    @classmethod
+    def release(cls, plate: str):
+        slot = cls.query.filter_by(plate=plate).first()
+        if slot:
+            slot.occupied = False
+            slot.plate    = None
+        return slot
+
+    def to_dict(self):
+        return {
+            "id":       self.id,
+            "code":     self.code,
+            "level":    self.level,
+            "occupied": self.occupied,
+            "plate":    self.plate,
+        }
+
+    def __repr__(self):
+        return f"<ParkingSlot {self.code} {'occupied' if self.occupied else 'free'}>"
+</file>
+
+<file path="app/models/vehicle.py">
+from datetime import datetime
+from .. import db
+
+
+class Vehicle(db.Model):
+    __tablename__ = "vehicles"
+
+    id           = db.Column(db.Integer,     primary_key=True)
+    plate        = db.Column(db.String(20),  unique=True, nullable=False, index=True)
+    owner_name   = db.Column(db.String(100))
+    owner_doc    = db.Column(db.String(20))
+    brand        = db.Column(db.String(50))
+    model        = db.Column(db.String(50))
+    color        = db.Column(db.String(30))
+    year         = db.Column(db.Integer)
+    vehicle_type = db.Column(db.String(20),  default="car")
+    authorized   = db.Column(db.Boolean,     default=True,  nullable=False)
+    notes        = db.Column(db.Text)
+    created_at   = db.Column(db.DateTime,    default=datetime.utcnow, nullable=False)
+
+    records = db.relationship("ParkingRecord", back_populates="vehicle", lazy="dynamic")
+
+    def to_dict(self):
+        return {
+            "id":           self.id,
+            "plate":        self.plate,
+            "owner_name":   self.owner_name,
+            "owner_doc":    self.owner_doc,
+            "brand":        self.brand,
+            "model":        self.model,
+            "color":        self.color,
+            "year":         self.year,
+            "vehicle_type": self.vehicle_type,
+            "authorized":   self.authorized,
+            "notes":        self.notes,
+            "created_at":   self.created_at.isoformat(),
+        }
+
+    def __repr__(self):
+        return f"<Vehicle {self.plate}>"
+</file>
+
+<file path="app/services/__init__.py">
+from .parking          import process_plate, get_stats
+from .plate_recognizer import recognize
+from .camera           import start as camera_start, stop as camera_stop
+
+__all__ = ["process_plate", "get_stats", "recognize", "camera_start", "camera_stop"]
+</file>
+
+<file path="app/services/camera.py">
+import os
+import threading
+import time
+from datetime import datetime
+from dataclasses import dataclass, field
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+
+SNAPSHOT_DIR = "static/uploads"
+
+
+@dataclass
+class _State:
+    running:      bool  = False
+    motion:       bool  = False
+    fps:          float = 0.0
+    width:        int   = 0
+    height:       int   = 0
+    mode:         str   = "webcam"
+    last_capture: float = 0.0
+    _lock:        threading.Lock = field(default_factory=threading.Lock)
+    _frame:       bytes = None
+
+    def write(self, jpg):
+        with self._lock:
+            self._frame = jpg
+
+    def read(self):
+        with self._lock:
+            return self._frame
+
+
+_state        = _State()
+_on_motion_cb = None
+_cooldown     = 8
+
+
+def start(mode="webcam", index=0, url="", cooldown=8, on_motion=None):
+    global _on_motion_cb, _cooldown
+    if _state.running:
+        return False, "Camera already running"
+    if mode in ("webcam", "ip") and not CV2_AVAILABLE:
+        return False, "OpenCV not installed"
+    _on_motion_cb   = on_motion
+    _cooldown       = cooldown
+    _state.mode     = mode
+    _state.running  = True
+    _state.last_capture = 0.0
+    threading.Thread(target=_loop, args=(index, url), daemon=True).start()
+    return True, "Camera started"
+
+
+def stop():
+    _state.running = False
+    return True, "Camera stopped"
+
+
+def get_frame():
+    return _state.read()
+
+
+def get_status():
+    return {
+        "running":    _state.running,
+        "motion":     _state.motion,
+        "fps":        _state.fps,
+        "resolution": f"{_state.width}x{_state.height}",
+        "mode":       _state.mode,
+    }
+
+
+def capture_frame():
+    jpg = _state.read()
+    if not jpg:
+        return None
+    os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    path = os.path.join(SNAPSHOT_DIR, f"snap_{ts}.jpg")
+    with open(path, "wb") as f:
+        f.write(jpg)
+    return path
+
+
+def save_b64_frame(b64: str):
+    import base64
+    import io
+    try:
+        from PIL import Image
+        data = base64.b64decode(b64.split(",")[-1])
+        img  = Image.open(io.BytesIO(data))
+        os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+        ts   = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        path = os.path.join(SNAPSHOT_DIR, f"browser_{ts}.jpg")
+        img.save(path, quality=90)
+        return path
+    except Exception:
+        return None
+
+
+def _loop(index, url):
+    source = url if _state.mode == "ip" else index
+    cap    = cv2.VideoCapture(source)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+    if not cap.isOpened():
+        _state.running = False
+        return
+
+    _state.width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    _state.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    fgbg        = cv2.createBackgroundSubtractorMOG2(history=200, varThreshold=40)
+    kernel      = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    frame_count = 0
+    fps_ts      = time.monotonic()
+
+    while _state.running:
+        ok, frame = cap.read()
+        if not ok:
+            time.sleep(0.1)
+            continue
+
+        frame_count += 1
+        small  = cv2.resize(frame, (0, 0), fx=0.4, fy=0.4)
+        mask   = fgbg.apply(small)
+        mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        motion = int(cv2.countNonZero(mask)) > 3000
+        _state.motion = motion
+
+        now = time.monotonic()
+        if motion and _on_motion_cb and (now - _state.last_capture) > _cooldown:
+            _state.last_capture = now
+            _fire_detection(frame.copy())
+
+        display      = _overlay(frame, motion)
+        ok2, buf     = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, 72])
+        if ok2:
+            _state.write(buf.tobytes())
+
+        elapsed = time.monotonic() - fps_ts
+        if elapsed >= 2.0:
+            _state.fps  = round(frame_count / elapsed, 1)
+            frame_count = 0
+            fps_ts      = time.monotonic()
+
+        time.sleep(0.030)
+
+    cap.release()
+    _state.write(None)
+
+
+def _fire_detection(frame):
+    os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    path = os.path.join(SNAPSHOT_DIR, f"motion_{ts}.jpg")
+    cv2.imwrite(path, frame)
+    threading.Thread(target=_on_motion_cb, args=(path,), daemon=True).start()
+
+
+def _overlay(frame, motion):
+    h, w  = frame.shape[:2]
+    color = (0, 60, 220) if motion else (0, 185, 80)
+    ov    = frame.copy()
+    cv2.rectangle(ov, (0, 0), (w, 44), (8, 8, 12), -1)
+    cv2.addWeighted(ov, 0.55, frame, 0.45, 0, frame)
+    ts = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
+    cv2.putText(frame, ts, (12, 29),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.62, (190, 210, 255), 1, cv2.LINE_AA)
+    label = "MOVIMIENTO" if motion else "EN VIVO"
+    cv2.putText(frame, label, (w - 130, 29),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.56, color, 1, cv2.LINE_AA)
+    x1, y1 = int(w * 0.12), int(h * 0.28)
+    x2, y2 = int(w * 0.88), int(h * 0.72)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+    return frame
+</file>
+
+<file path="app/services/parking.py">
+from datetime import datetime
+from .. import db
+from ..models.vehicle import Vehicle
+from ..models.record  import ParkingRecord
+from ..models.slot    import ParkingSlot
+
+
+class ParkingEvent:
+    def __init__(self, plate, event_type, is_known, authorized,
+                 confidence, simulated, slot_code, record_id, vehicle):
+        self.plate      = plate
+        self.event_type = event_type
+        self.is_known   = is_known
+        self.authorized = authorized
+        self.confidence = confidence
+        self.simulated  = simulated
+        self.slot_code  = slot_code
+        self.record_id  = record_id
+        self.vehicle    = vehicle
+        self.timestamp  = datetime.utcnow().isoformat()
+
+    def to_dict(self):
+        return {
+            "plate":      self.plate,
+            "event_type": self.event_type,
+            "is_known":   self.is_known,
+            "authorized": self.authorized,
+            "confidence": self.confidence,
+            "simulated":  self.simulated,
+            "slot_code":  self.slot_code,
+            "record_id":  self.record_id,
+            "timestamp":  self.timestamp,
+            "vehicle": {
+                "owner_name":   self.vehicle.owner_name   if self.vehicle else None,
+                "brand":        self.vehicle.brand        if self.vehicle else None,
+                "model":        self.vehicle.model        if self.vehicle else None,
+                "color":        self.vehicle.color        if self.vehicle else None,
+                "year":         self.vehicle.year         if self.vehicle else None,
+                "vehicle_type": self.vehicle.vehicle_type if self.vehicle else None,
+                "authorized":   self.vehicle.authorized   if self.vehicle else None,
+            },
+        }
+
+
+def process_plate(plate, confidence=1.0, image_path=None,
+                  source="manual", simulated=False):
+    plate      = plate.upper().strip()
+    vehicle    = Vehicle.query.filter_by(plate=plate).first()
+    is_known   = vehicle is not None
+    authorized = vehicle.authorized if vehicle else True
+    inside     = ParkingRecord.query.filter_by(plate=plate, status="inside").first()
+    event_type = "exit" if inside else "entry"
+    slot_code  = None
+
+    if event_type == "entry":
+        slot      = ParkingSlot.assign(plate)
+        slot_code = slot.code if slot else None
+        record    = ParkingRecord(
+            plate      = plate,
+            vehicle_id = vehicle.id if vehicle else None,
+            slot_code  = slot_code,
+            event_type = "entry",
+            status     = "inside",
+            is_known   = is_known,
+            confidence = confidence,
+            image_path = image_path,
+            source     = source,
+        )
+        db.session.add(record)
+    else:
+        inside.exit_time  = datetime.utcnow()
+        inside.status     = "exited"
+        inside.event_type = "exit"
+        ParkingSlot.release(plate)
+        record    = inside
+        slot_code = record.slot_code
+
+    db.session.commit()
+
+    return ParkingEvent(
+        plate      = plate,
+        event_type = event_type,
+        is_known   = is_known,
+        authorized = authorized,
+        confidence = confidence,
+        simulated  = simulated,
+        slot_code  = slot_code,
+        record_id  = record.id,
+        vehicle    = vehicle,
+    )
+
+
+def get_stats():
+    from sqlalchemy import func
+    total    = ParkingSlot.query.count()
+    occupied = ParkingSlot.query.filter_by(occupied=True).count()
+    today    = datetime.utcnow().date()
+    return {
+        "total_slots":    total,
+        "occupied":       occupied,
+        "free":           total - occupied,
+        "entries_today":  ParkingRecord.query.filter(
+            func.date(ParkingRecord.entry_time) == today
+        ).count(),
+        "unknown_today":  ParkingRecord.query.filter(
+            func.date(ParkingRecord.entry_time) == today,
+            ParkingRecord.is_known == False,
+        ).count(),
+        "known_vehicles": Vehicle.query.count(),
+    }
+</file>
+
+<file path="app/services/plate_recognizer.py">
+import random
+import string
+import requests
+
+
+class RecognitionResult:
+    def __init__(self, plate: str, confidence: float, vehicle_type: str, simulated: bool = False):
+        self.plate        = plate.upper().strip()
+        self.confidence   = confidence
+        self.vehicle_type = vehicle_type
+        self.simulated    = simulated
+
+    def to_dict(self):
+        return {
+            "plate":        self.plate,
+            "confidence":   self.confidence,
+            "vehicle_type": self.vehicle_type,
+            "simulated":    self.simulated,
+        }
+
+
+def recognize(image_path: str) -> RecognitionResult:
+    from flask import current_app
+    api_key = current_app.config.get("PLATE_API_KEY", "")
+    if api_key:
+        result = _call_api(image_path, api_key)
+        if result:
+            return result
+    return _simulate()
+
+
+def _call_api(image_path: str, api_key: str):
+    try:
+        with open(image_path, "rb") as f:
+            response = requests.post(
+                "https://api.platerecognizer.com/v1/plate-reader/",
+                data={"regions": ["pe", "cl", "ar", "br", "co", "mx"]},
+                files={"upload": f},
+                headers={"Authorization": f"Token {api_key}"},
+                timeout=10,
+            )
+        if response.status_code != 201:
+            return None
+        results = response.json().get("results", [])
+        if not results:
+            return None
+        best = results[0]
+        return RecognitionResult(
+            plate        = best["plate"],
+            confidence   = round(best["score"], 4),
+            vehicle_type = best.get("vehicle", {}).get("type", "car"),
+            simulated    = False,
+        )
+    except Exception:
+        return None
+
+
+def _simulate() -> RecognitionResult:
+    letters = "".join(random.choices(string.ascii_uppercase, k=3))
+    numbers = "".join(random.choices(string.digits, k=3))
+    return RecognitionResult(
+        plate        = f"{letters}-{numbers}",
+        confidence   = round(random.uniform(0.83, 0.99), 4),
+        vehicle_type = random.choice(["car", "truck", "motorcycle"]),
+        simulated    = True,
+    )
+</file>
+
+<file path="README.md">
+
+</file>
+
+<file path="requirements.txt">
+flask>=3.0
+flask-sqlalchemy>=3.1
+flask-migrate>=4.0
+flask-cors>=4.0
+opencv-python-headless>=4.9
+pillow>=10.0
+requests>=2.31
+python-dotenv>=1.0
+gunicorn>=21.0
+</file>
+
+<file path="run.py">
+"""
+run.py — Entry point for ParkVision.
+Production: gunicorn run:app --workers 1 --threads 4 --bind 0.0.0.0:5000
+Development: python run.py
+"""
+
+import os
+from dotenv import load_dotenv
+from app import create_app
+
+load_dotenv()
+
+app = create_app({
+    "SECRET_KEY":            os.getenv("SECRET_KEY", "dev-secret"),
+    "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL", "sqlite:///parkvision.db"),
+    "PLATE_API_KEY":         os.getenv("PLATE_RECOGNIZER_API_KEY", ""),
+    "CAMERA_COOLDOWN":       int(os.getenv("CAMERA_COOLDOWN", 8)),
+})
+
+if __name__ == "__main__":
+    app.run(
+        host     = "0.0.0.0",
+        port     = int(os.getenv("PORT", 5000)),
+        debug    = os.getenv("FLASK_DEBUG", "false").lower() == "true",
+        threaded = True,
+    )
+</file>
+
+<file path="static/css/main.css">
+:root {
+  --sidebar-width: 230px;
+}
+
+body {
+  background: #f0f2f5;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.9rem;
+}
+
+/* ── SIDEBAR ─────────────────────────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-width);
+  min-height: 100vh;
+  background: #1a1d23;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.brand-icon {
+  width: 36px; height: 36px;
+  background: rgba(25,135,84,0.2);
+  border: 1px solid rgba(25,135,84,0.3);
+  border-radius: 8px;
+  display: grid; place-items: center;
+  color: #25d07a; font-size: 1rem;
+}
+.brand-name { color: #fff; font-weight: 600; font-size: 1rem; line-height: 1.2; }
+.brand-sub  { color: #5a6070; font-size: 0.62rem; letter-spacing: 0.8px; }
+
+.sidebar-section {
+  font-size: 0.62rem; font-weight: 600;
+  color: #3d4860; letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 14px 16px 5px;
+}
+
+.sidebar-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px;
+  color: #7c89a3; font-size: 0.855rem;
+  text-decoration: none;
+  transition: all 0.15s;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.sidebar-link:hover  { background: rgba(255,255,255,0.04); color: #e8ecf4; }
+.sidebar-link.active { background: rgba(25,135,84,0.1); color: #25d07a; border-left-color: #25d07a; }
+.sidebar-link i      { font-size: 1rem; flex-shrink: 0; }
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 14px 16px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.75rem; color: #3d4860;
+}
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #ffc107; flex-shrink: 0;
+}
+.status-dot.live { background: #25d07a; animation: blink 2s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── CONTENT ─────────────────────────────────────────────────── */
+#content {
+  flex: 1;
+  min-width: 0;
+  padding: 28px;
+  overflow-y: auto;
+  height: 100vh;
+}
+
+.page { display: none; animation: fadeUp .2s ease; }
+.page.active { display: block; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+.page-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 24px; gap: 12px;
+}
+.page-title { font-size: 1.45rem; font-weight: 600; margin-bottom: 2px; }
+.page-sub   { color: #6c757d; font-size: 0.82rem; }
+
+/* ── STAT CARDS ──────────────────────────────────────────────── */
+.stat-card {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e9ecef;
+  border-left-width: 3px;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.stat-icon {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  display: grid; place-items: center;
+  font-size: 1.2rem; flex-shrink: 0;
+}
+.stat-val {
+  display: block;
+  font-size: 1.8rem; font-weight: 700;
+  line-height: 1; font-variant-numeric: tabular-nums;
+}
+.stat-lbl {
+  display: block;
+  font-size: 0.72rem; color: #6c757d; margin-top: 3px;
+}
+.border-purple   { border-left-color: #6f42c1 !important; }
+.bg-purple-subtle{ background: #f3efff; }
+.text-purple     { color: #6f42c1; }
+
+/* ── CARD ────────────────────────────────────────────────────── */
+.card {
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.card-header {
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6c757d;
+  padding: 12px 16px;
+}
+
+/* ── FEED ────────────────────────────────────────────────────── */
+.feed-list { max-height: 360px; overflow-y: auto; }
+.feed-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid #f0f2f5;
+  transition: background .12s;
+}
+.feed-item:last-child { border-bottom: none; }
+.feed-item:hover { background: #f8f9fa; }
+.feed-item.fi-green  { border-left-color: #198754; }
+.feed-item.fi-amber  { border-left-color: #ffc107; }
+.feed-item.fi-blue   { border-left-color: #0d6efd; }
+.feed-item.fi-red    { border-left-color: #dc3545; }
+.fi-plate { font-family: monospace; font-size: 0.9rem; font-weight: 600; }
+.fi-owner { font-size: 0.72rem; color: #6c757d; }
+.fi-time  { font-size: 0.68rem; color: #adb5bd; margin-left: auto; white-space: nowrap; font-family: monospace; }
+
+/* ── DONUT ───────────────────────────────────────────────────── */
+.donut-wrap  { position: relative; display: inline-block; }
+.donut-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+
+/* ── CAMERA ──────────────────────────────────────────────────── */
+.cam-wrap {
+  border-radius: 10px; overflow: hidden;
+  background: #111; aspect-ratio: 16/9;
+  position: relative; min-height: 260px;
+  border: 1px solid #dee2e6;
+}
+.cam-placeholder {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.hud-bar {
+  position: absolute; top: 0; left: 0; right: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.7) 0%, transparent 100%);
+  padding: 8px 14px;
+}
+.hud-roi {
+  position: absolute; left: 12%; right: 12%; top: 22%; bottom: 22%;
+  border: 2px solid #198754; border-radius: 4px;
+  transition: border-color .2s;
+}
+.hud-roi.motion { border-color: #dc3545; }
+.hud-motion.motion { color: #dc3545 !important; }
+
+#cam-badge { font-size: 0.65rem; }
+#cam-status-pill {
+  font-size: 0.8rem;
+  background: #6c757d;
+  color: #fff;
+  padding: 5px 14px;
+}
+#cam-status-pill.live { background: #198754; }
+
+.det-list { max-height: 460px; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.det-card {
+  border-radius: 8px; padding: 10px 12px;
+  border-left: 3px solid #dee2e6;
+  background: #f8f9fa;
+  animation: slideIn .2s ease;
+}
+.det-card.dc-green { border-left-color: #198754; }
+.det-card.dc-amber { border-left-color: #ffc107; }
+.det-card.dc-blue  { border-left-color: #0d6efd; }
+.det-card.dc-red   { border-left-color: #dc3545; }
+@keyframes slideIn { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:translateX(0)} }
+.det-plate { font-family: monospace; font-size: 1rem; font-weight: 700; letter-spacing: 2px; }
+.det-meta  { display: flex; justify-content: space-between; font-size: 0.72rem; color: #6c757d; margin-top: 2px; }
+.det-tags  { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+
+/* ── SCANNER ─────────────────────────────────────────────────── */
+.drop-zone {
+  border: 2px dashed #dee2e6; border-radius: 10px;
+  padding: 40px 24px; text-align: center; cursor: pointer;
+  transition: all .2s; background: #fff; min-height: 200px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative;
+}
+.drop-zone:hover, .drop-zone.drag { border-color: #198754; background: #f0fdf4; }
+
+.result-panel {
+  background: #fff; border: 1px solid #e9ecef;
+  border-radius: 10px; min-height: 320px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+
+.divider {
+  display: flex; align-items: center; gap: 10px;
+  color: #adb5bd; font-size: 0.78rem;
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; height: 1px; background: #dee2e6;
+}
+
+/* ── SLOTS ───────────────────────────────────────────────────── */
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+.slot {
+  aspect-ratio: 1.7; border-radius: 7px;
+  border: 1.5px solid #dee2e6;
+  background: #fff;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-family: monospace; font-size: 0.75rem; color: #6c757d;
+}
+.slot.sl-free { border-color: #a3cfbb; background: #f0fdf4; color: #198754; font-weight: 600; }
+.slot.sl-occ  { border-color: #ffc107; background: #fffbeb; color: #856404; }
+.slot-plate   { font-size: 0.58rem; color: #adb5bd; }
+
+/* ── TABLES ──────────────────────────────────────────────────── */
+.table { font-size: 0.85rem; }
+.table thead th { font-size: 0.72rem; letter-spacing: 0.4px; }
+.font-monospace { font-family: monospace !important; }
+</file>
+
+<file path="static/js/main.js">
+'use strict';
+
+const State = {
+  feedEvents:       [],
+  camRunning:       false,
+  camMode:          'browser',
+  browserStream:    null,
+  motionTimer:      null,
+  serverPollTimer:  null,
+  browserCooldownTs: 0,
+  sseSource:        null,
+  bsToast:          null,
+  bsModal:          null,
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  State.bsToast = new bootstrap.Toast(document.getElementById('toast'), { delay: 5000 });
+  State.bsModal = new bootstrap.Modal(document.getElementById('vehicleModal'));
+  setupDropZone();
+  setupCamModeSwitch();
+  SSE.connect();
+  refreshAll();
+  setInterval(refreshAll, 15_000);
+  setInterval(Clock.tick, 1_000);
+  Clock.tick();
+});
+
+// ── CLOCK ──────────────────────────────────────────────────────
+const Clock = {
+  tick() {
+    const now = new Date();
+    setText('clock', now.toLocaleString('es-PE', {
+      weekday: 'long', day: 'numeric', month: 'long',
+      hour: '2-digit', minute: '2-digit',
+    }));
+    const hud = document.getElementById('hud-clock');
+    if (hud) hud.textContent = now.toLocaleTimeString('es-PE');
+  },
+};
+
+// ── NAV ─────────────────────────────────────────────────────────
+function nav(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+  document.getElementById(`pg-${page}`).classList.add('active');
+  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  ({ inside: loadInside, vehicles: loadVehicles, history: loadHistory, slots: loadSlots })[page]?.();
+}
+
+// ── REFRESH ──────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([loadStats(), loadInsideCount()]);
+}
+
+async function loadStats() {
+  const res = await API.get('/api/dashboard/stats');
+  if (!res.ok) return;
+  const d = res.data;
+  setText('s-free',  d.free);
+  setText('s-occ',   d.occupied);
+  setText('s-today', d.entries_today);
+  setText('s-unk',   d.unknown_today);
+  Donut.update(d.occupied, d.total_slots);
+  setText('leg-occ',  d.occupied);
+  setText('leg-free', d.free);
+}
+
+async function loadInsideCount() {
+  const res = await API.get('/api/dashboard/inside');
+  if (!res.ok) return;
+  setText('inside-badge', res.data.length);
+}
+
+// ── DONUT ────────────────────────────────────────────────────────
+const Donut = {
+  update(occ, total) {
+    if (!total) return;
+    const pct  = occ / total;
+    const circ = 2 * Math.PI * 55;
+    const arc  = document.getElementById('donut-arc');
+    if (arc) arc.setAttribute('stroke-dasharray', `${circ * pct} ${circ * (1 - pct)}`);
+    setText('donut-pct', `${Math.round(pct * 100)}%`);
+  },
+};
+
+// ── FEED ─────────────────────────────────────────────────────────
+const Feed = {
+  push(event) {
+    State.feedEvents.unshift(event);
+    if (State.feedEvents.length > 30) State.feedEvents.pop();
+    this.render();
+  },
+  render() {
+    const el = document.getElementById('dash-feed');
+    if (!el) return;
+    if (!State.feedEvents.length) {
+      el.innerHTML = '<p class="text-center text-muted py-4 mb-0">Sin eventos aun</p>';
+      return;
+    }
+    const cls  = e => e.vehicle?.authorized === false ? 'fi-red'   : e.event_type === 'exit' ? 'fi-blue'  : e.is_known ? 'fi-green' : 'fi-amber';
+    const tag  = e => e.vehicle?.authorized === false ? 'danger'   : e.event_type === 'exit' ? 'primary'  : e.is_known ? 'success'  : 'warning';
+    const lbl  = e => e.vehicle?.authorized === false ? 'BLOQUEADO': e.event_type === 'exit' ? 'Salida'   : e.is_known ? 'Conocido' : 'Desconocido';
+    el.innerHTML = State.feedEvents.slice(0, 12).map(e => `
+      <div class="feed-item ${cls(e)}">
+        <div class="flex-grow-1">
+          <div class="fi-plate">${e.plate}</div>
+          <div class="fi-owner">${e.vehicle?.owner_name ?? 'Sin registro'}</div>
+        </div>
+        <span class="badge bg-${tag(e)}">${lbl(e)}</span>
+        <span class="fi-time">${fmtTime(e.timestamp ?? new Date().toISOString())}</span>
+      </div>`).join('');
+  },
+};
+
+// ── SSE ──────────────────────────────────────────────────────────
+const SSE = {
+  connect() {
+    if (State.sseSource) State.sseSource.close();
+    State.sseSource = new EventSource('/api/camera/events');
+    State.sseSource.onmessage = e => {
+      try {
+        const ev = JSON.parse(e.data);
+        Feed.push(ev);
+        Toast.show(ev);
+        Detections.add(ev);
+        refreshAll();
+      } catch (_) {}
+    };
+    State.sseSource.onerror = () => setTimeout(() => SSE.connect(), 5_000);
+  },
+};
+
+// ── TOAST ────────────────────────────────────────────────────────
+const Toast = {
+  show(event) {
+    const isKnown = event.is_known;
+    const isExit  = event.event_type === 'exit';
+    setText('toast-plate', event.plate);
+    document.getElementById('toast-info').textContent = [
+      event.vehicle?.owner_name ?? 'Desconocido',
+      isExit ? 'Salida' : 'Entrada',
+      event.slot_code ? `· Espacio ${event.slot_code}` : '',
+    ].filter(Boolean).join(' · ');
+    document.getElementById('toast-time').textContent = new Date().toLocaleTimeString('es-PE');
+    State.bsToast.show();
+  },
+};
+
+// ── TABLES ───────────────────────────────────────────────────────
+async function loadInside() {
+  const res = await API.get('/api/dashboard/inside');
+  if (!res.ok) return;
+  const tbody = document.getElementById('inside-tbody');
+  if (!res.data.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No hay vehiculos dentro</td></tr>';
+    return;
+  }
+  tbody.innerHTML = res.data.map(r => `<tr>
+    <td><code>${r.plate}</code></td>
+    <td>${r.vehicle?.owner_name ?? '—'}</td>
+    <td><code class="text-primary">${r.slot_code ?? '—'}</code></td>
+    <td>${fmtDateTime(r.entry_time)}</td>
+    <td>${r.duration_minutes} min</td>
+    <td><span class="badge bg-${r.is_known ? 'success' : 'warning'}">${r.is_known ? 'Conocido' : 'Desconocido'}</span></td>
+  </tr>`).join('');
+}
+
+async function loadVehicles() {
+  const res = await API.get('/api/vehicles/');
+  if (!res.ok) return;
+  const tbody = document.getElementById('vehicles-tbody');
+  if (!res.data.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No hay vehiculos registrados</td></tr>';
+    return;
+  }
+  tbody.innerHTML = res.data.map(v => `<tr>
+    <td><code>${v.plate}</code></td>
+    <td>${v.owner_name ?? '—'}</td>
+    <td>${[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
+    <td>${v.color ?? '—'}</td>
+    <td>${v.year ?? '—'}</td>
+    <td><span class="badge bg-${v.authorized ? 'success' : 'danger'}">${v.authorized ? 'Autorizado' : 'Bloqueado'}</span></td>
+    <td><button class="btn btn-outline-danger btn-sm" onclick="deleteVehicle(${v.id})">
+      <i class="bi bi-trash"></i>
+    </button></td>
+  </tr>`).join('');
+}
+
+async function loadHistory() {
+  const res = await API.get('/api/records/?limit=100');
+  if (!res.ok) return;
+  const tbody = document.getElementById('history-tbody');
+  if (!res.data.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Sin registros aun</td></tr>';
+    return;
+  }
+  tbody.innerHTML = res.data.map(r => {
+    const pct = Math.round((r.confidence ?? 0) * 100);
+    return `<tr>
+      <td><code>${r.plate}</code></td>
+      <td>${r.owner_name ?? '—'}</td>
+      <td><span class="badge bg-${r.event_type === 'entry' ? 'success' : 'primary'}">${r.event_type === 'entry' ? 'Entrada' : 'Salida'}</span></td>
+      <td>${fmtDateTime(r.entry_time)}</td>
+      <td>${r.exit_time ? fmtDateTime(r.exit_time) : '<span class="badge bg-success">Dentro</span>'}</td>
+      <td><code class="text-primary">${r.slot_code ?? '—'}</code></td>
+      <td>
+        <div class="d-flex align-items-center gap-2">
+          <small class="text-muted font-monospace">${pct}%</small>
+          <div class="progress flex-grow-1" style="height:4px;width:60px">
+            <div class="progress-bar bg-success" style="width:${pct}%"></div>
+          </div>
+        </div>
+      </td>
+      <td><span class="badge bg-secondary">${r.source}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadSlots() {
+  const res = await API.get('/api/slots/');
+  if (!res.ok) return;
+  ['A', 'B'].forEach(l => document.getElementById(`slots-${l}`).innerHTML = '');
+  res.data.forEach(s => {
+    const div = document.createElement('div');
+    div.className = `slot ${s.occupied ? 'sl-occ' : 'sl-free'}`;
+    div.innerHTML = `<span class="fw-bold">${s.code}</span>${s.occupied ? `<span class="slot-plate">${s.plate ?? ''}</span>` : ''}`;
+    document.getElementById(`slots-${s.level === 1 ? 'A' : 'B'}`).appendChild(div);
+  });
+}
+
+// ── VEHICLES CRUD ─────────────────────────────────────────────────
+function openVehicleModal() { State.bsModal.show(); }
+
+async function saveVehicle() {
+  const plate = document.getElementById('f-plate').value.trim().toUpperCase();
+  if (!plate) { alert('La matricula es obligatoria'); return; }
+  const res = await API.post('/api/vehicles/', {
+    plate,
+    owner_name:   document.getElementById('f-name').value,
+    owner_doc:    document.getElementById('f-doc').value,
+    brand:        document.getElementById('f-brand').value,
+    model:        document.getElementById('f-model').value,
+    color:        document.getElementById('f-color').value,
+    year:         parseInt(document.getElementById('f-year').value) || null,
+    vehicle_type: document.getElementById('f-type').value,
+    notes:        document.getElementById('f-notes').value,
+    authorized:   true,
+  });
+  if (res.ok) { State.bsModal.hide(); loadVehicles(); refreshAll(); }
+  else alert(res.error ?? 'Error al guardar');
+}
+
+async function deleteVehicle(id) {
+  if (!confirm('Eliminar este vehiculo?')) return;
+  await API.del(`/api/vehicles/${id}`);
+  loadVehicles(); refreshAll();
+}
+
+// ── SCANNER ──────────────────────────────────────────────────────
+function setupDropZone() {
+  const zone = document.getElementById('drop-zone');
+  const inp  = document.getElementById('file-in');
+  if (!zone) return;
+  zone.addEventListener('click', () => inp.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag'); if (e.dataTransfer.files[0]) setPreview(e.dataTransfer.files[0]); });
+  inp.addEventListener('change', () => { if (inp.files[0]) setPreview(inp.files[0]); });
+}
+
+function setPreview(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById('preview-img');
+    img.src = e.target.result; img.style.display = 'block';
+    document.getElementById('drop-content').style.display = 'none';
+    document.getElementById('btn-scan').disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function scanUpload() {
+  const file = document.getElementById('file-in').files[0];
+  if (!file) return;
+  const btn = document.getElementById('btn-scan');
+  btn.disabled = true; btn.textContent = 'Analizando...';
+  const form = new FormData();
+  form.append('image', file);
+  try {
+    const resp = await fetch('/api/records/upload', { method: 'POST', body: form });
+    const json = await resp.json();
+    if (resp.ok) { renderResult(json.data); Feed.push(json.data); Toast.show(json.data); refreshAll(); }
+    else renderResultError(json.error ?? 'No se detecto placa');
+  } catch { renderResultError('Error de conexion'); }
+  btn.disabled = false; btn.innerHTML = '<i class="bi bi-upc-scan"></i> Reconocer Matricula';
+}
+
+async function manualEntry() {
+  const plate = document.getElementById('manual-plate').value.trim();
+  if (!plate) return;
+  const res = await API.post('/api/records/manual', { plate });
+  if (res.ok) { renderResult(res.data); Feed.push(res.data); Toast.show(res.data); refreshAll(); }
+  else renderResultError(res.error ?? 'Error');
+}
+
+function renderResult(event) {
+  const isEntry   = event.event_type === 'entry';
+  const isKnown   = event.is_known;
+  const isBlocked = event.vehicle?.authorized === false;
+  const v         = event.vehicle ?? {};
+  const pct       = Math.round((event.confidence ?? 0) * 100);
+  const plateColor = isBlocked ? 'danger' : isKnown ? 'success' : 'warning';
+
+  let alertHtml = '';
+  if (isBlocked)     alertHtml = `<div class="alert alert-danger mt-3 py-2 small mb-0">Acceso denegado — vehiculo bloqueado</div>`;
+  else if (!isKnown) alertHtml = `<div class="alert alert-warning mt-3 py-2 small mb-0">Vehiculo no registrado — requiere atencion</div>`;
+  else if (!isEntry) alertHtml = `<div class="alert alert-info mt-3 py-2 small mb-0">Salida registrada${event.slot_code ? ` · Espacio ${event.slot_code}` : ''}</div>`;
+  else               alertHtml = `<div class="alert alert-success mt-3 py-2 small mb-0">Acceso permitido${event.slot_code ? ` · Espacio asignado: <strong>${event.slot_code}</strong>` : ''}</div>`;
+
+  document.getElementById('result-panel').innerHTML = `
+    <div class="w-100">
+      <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+        <span class="badge bg-${plateColor} font-monospace fs-5 px-3 py-2 letter-spacing-wide">${event.plate}</span>
+        <span class="badge bg-${isEntry ? (isKnown ? 'success' : 'warning') : 'primary'}">${isEntry ? (isKnown ? 'Conocido' : 'Desconocido') : 'Salida'}</span>
+        ${event.simulated ? '<span class="badge bg-secondary">DEMO</span>' : ''}
+      </div>
+      <table class="table table-sm table-bordered mb-0">
+        <tr><td class="text-muted small">Propietario</td><td class="font-monospace small">${v.owner_name ?? 'No registrado'}</td></tr>
+        <tr><td class="text-muted small">Vehiculo</td><td class="font-monospace small">${[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td></tr>
+        <tr><td class="text-muted small">Color / Año</td><td class="font-monospace small">${[v.color, v.year].filter(Boolean).join(' · ') || '—'}</td></tr>
+        <tr><td class="text-muted small">Evento</td><td class="font-monospace small"><strong class="text-${isEntry ? 'success' : 'primary'}">${isEntry ? 'ENTRADA' : 'SALIDA'}</strong></td></tr>
+        <tr><td class="text-muted small">Confianza</td><td>
+          <div class="d-flex align-items-center gap-2">
+            <small class="font-monospace">${pct}%</small>
+            <div class="progress flex-grow-1" style="height:5px"><div class="progress-bar bg-success" style="width:${pct}%"></div></div>
+          </div>
+        </td></tr>
+      </table>
+      ${alertHtml}
+    </div>`;
+  document.getElementById('result-panel').style.alignItems = 'flex-start';
+}
+
+function renderResultError(msg) {
+  document.getElementById('result-panel').innerHTML =
+    `<div class="alert alert-danger mb-0">${msg}</div>`;
+}
+
+// ── CAMERA ───────────────────────────────────────────────────────
+function setupCamModeSwitch() {
+  document.getElementById('cam-mode')?.addEventListener('change', onCamModeChange);
+}
+function onCamModeChange() {
+  const mode = document.getElementById('cam-mode').value;
+  document.getElementById('cfg-index').style.display = mode === 'webcam' ? '' : 'none';
+  document.getElementById('cfg-url').style.display   = mode === 'ip'     ? '' : 'none';
+}
+async function toggleCam() { State.camRunning ? await stopCam() : await startCam(); }
+
+async function startCam() {
+  State.camMode = document.getElementById('cam-mode').value;
+  const btn = document.getElementById('btn-cam');
+  btn.disabled = true; btn.textContent = 'Conectando...';
+  try {
+    State.camMode === 'browser' ? await startBrowserCam() : await startServerCam();
+    State.camRunning = true;
+    updateCamUI(true);
+    document.getElementById('btn-capture').disabled = false;
+  } catch (err) { alert(`Error al iniciar camara: ${err.message}`); }
+  btn.disabled = false;
+}
+
+async function stopCam() {
+  if (State.browserStream) { State.browserStream.getTracks().forEach(t => t.stop()); State.browserStream = null; }
+  clearInterval(State.motionTimer);
+  clearInterval(State.serverPollTimer);
+  if (State.camMode !== 'browser') {
+    await API.post('/api/camera/stop', {});
+    document.getElementById('cam-mjpeg').style.display = 'none';
+    document.getElementById('cam-mjpeg').src = '';
+  } else {
+    document.getElementById('cam-video').style.display = 'none';
+  }
+  document.getElementById('cam-hud').style.display        = 'none';
+  document.getElementById('cam-placeholder').style.display = 'flex';
+  document.getElementById('btn-capture').disabled = true;
+  State.camRunning = false;
+  updateCamUI(false);
+}
+
+async function startServerCam() {
+  const index = parseInt(document.getElementById('cam-index').value) || 0;
+  const url   = document.getElementById('cam-url').value.trim();
+  const res   = await API.post('/api/camera/start', { mode: State.camMode, index, url });
+  if (!res.ok) throw new Error(res.error ?? 'Error al iniciar');
+  await sleep(800);
+  const img = document.getElementById('cam-mjpeg');
+  img.src = `/api/camera/stream?t=${Date.now()}`;
+  img.style.display = 'block';
+  document.getElementById('cam-placeholder').style.display = 'none';
+  document.getElementById('cam-hud').style.display         = 'block';
+  State.serverPollTimer = setInterval(async () => {
+    const s = await API.get('/api/camera/status');
+    if (!s.ok) return;
+    setText('chip-fps', `FPS ${s.data.fps}`);
+    setText('chip-res', s.data.resolution);
+    updateMotionChip(s.data.motion);
+  }, 2_000);
+}
+
+async function startBrowserCam() {
+  try {
+    State.browserStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+  } catch (err) {
+    const msgs = {
+      NotAllowedError:   'Permiso de camara denegado. Acepta el permiso en el navegador.',
+      NotFoundError:     'No se encontro ninguna camara conectada.',
+      NotReadableError:  'La camara esta siendo usada por otra aplicacion.',
+    };
+    throw new Error(msgs[err.name] ?? `${err.name}: ${err.message}`);
+  }
+  const video = document.getElementById('cam-video');
+  video.srcObject = State.browserStream; video.style.display = 'block';
+  document.getElementById('cam-placeholder').style.display = 'none';
+  document.getElementById('cam-hud').style.display         = 'block';
+  setText('chip-fps', 'FPS ~30'); setText('chip-res', '1280x720');
+  let prevData = null;
+  State.motionTimer = setInterval(() => {
+    prevData = detectMotion(video, prevData, (motion, newData) => {
+      prevData = newData;
+      updateMotionChip(motion);
+      document.getElementById('hud-roi')?.classList.toggle('motion', motion);
+      const lbl = document.getElementById('hud-motion');
+      if (lbl) { lbl.textContent = motion ? 'MOVIMIENTO' : 'EN VIVO'; lbl.classList.toggle('motion', motion); }
+      const cooldown = parseInt(document.getElementById('cooldown').value) || 8;
+      if (motion && document.getElementById('auto-tog').checked &&
+          (Date.now() - State.browserCooldownTs) > cooldown * 1_000) {
+        State.browserCooldownTs = Date.now();
+        captureNow();
+      }
+    });
+  }, 500);
+}
+
+function detectMotion(video, prev, cb) {
+  if (video.readyState < 2) { cb(false, prev); return prev; }
+  const canvas = document.getElementById('cam-canvas');
+  const W = 160, H = 90;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, W, H);
+  const curr = ctx.getImageData(0, 0, W, H);
+  if (!prev) { cb(false, curr); return curr; }
+  let diff = 0;
+  for (let i = 0; i < curr.data.length; i += 4) {
+    diff += Math.abs(curr.data[i]   - prev.data[i])
+          + Math.abs(curr.data[i+1] - prev.data[i+1])
+          + Math.abs(curr.data[i+2] - prev.data[i+2]);
+  }
+  cb(diff > 800_000, curr);
+  return curr;
+}
+
+function updateMotionChip(motion) {
+  const chip = document.getElementById('chip-motion');
+  if (!chip) return;
+  chip.textContent = motion ? 'MOVIMIENTO' : 'SIN MOVIMIENTO';
+  chip.className   = `badge ${motion ? 'bg-danger' : 'bg-secondary'}`;
+}
+
+async function captureNow() {
+  document.getElementById('btn-capture').disabled = true;
+  let body = {};
+  if (State.camMode === 'browser') {
+    const video = document.getElementById('cam-video');
+    const canvas = document.getElementById('cam-canvas');
+    canvas.width = video.videoWidth || 1280; canvas.height = video.videoHeight || 720;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    body = { frame_b64: canvas.toDataURL('image/jpeg', 0.9) };
+  }
+  const res = await API.post('/api/camera/capture', body);
+  if (res.ok) { Detections.add(res.data); Feed.push(res.data); Toast.show(res.data); refreshAll(); }
+  document.getElementById('btn-capture').disabled = false;
+}
+
+function updateCamUI(running) {
+  const btn  = document.getElementById('btn-cam');
+  const badge = document.getElementById('cam-badge');
+  const pill  = document.getElementById('cam-status-pill');
+  const dot   = document.getElementById('status-dot');
+  if (running) {
+    btn.innerHTML = '<i class="bi bi-stop-fill"></i> Detener';
+    btn.className = 'btn btn-danger btn-sm';
+    badge.textContent = 'ON'; badge.className = 'badge bg-success ms-auto';
+    pill.textContent = State.camMode === 'browser' ? 'Camara navegador' : 'Webcam activa';
+    pill.className = 'badge rounded-pill live';
+    dot.classList.add('live');
+    document.getElementById('status-txt').textContent = 'Camara activa';
+  } else {
+    btn.innerHTML = '<i class="bi bi-play-fill"></i> Iniciar Camara';
+    btn.className = 'btn btn-success btn-sm';
+    badge.textContent = 'OFF'; badge.className = 'badge bg-secondary ms-auto';
+    pill.textContent = 'Desconectada'; pill.className = 'badge rounded-pill';
+    dot.classList.remove('live');
+    document.getElementById('status-txt').textContent = 'Modo Demo';
+    setText('chip-fps', 'FPS —'); setText('chip-res', '— x —');
+    updateMotionChip(false);
+  }
+}
+
+// ── DETECTIONS ────────────────────────────────────────────────────
+const Detections = {
+  add(event) {
+    const list = document.getElementById('det-list');
+    if (!list) return;
+    list.querySelector('p')?.remove();
+    const isExit    = event.event_type === 'exit';
+    const isKnown   = event.is_known;
+    const isBlocked = event.vehicle?.authorized === false;
+    const cls  = isBlocked ? 'dc-red'   : isExit ? 'dc-blue'  : isKnown ? 'dc-green' : 'dc-amber';
+    const tag  = isBlocked ? 'danger'   : isExit ? 'primary'  : isKnown ? 'success'  : 'warning';
+    const lbl  = isBlocked ? 'Bloqueado': isExit ? 'Salida'   : isKnown ? 'Conocido' : 'Desconocido';
+    const pct  = Math.round((event.confidence ?? 0) * 100);
+    const card = document.createElement('div');
+    card.className = `det-card ${cls}`;
+    card.innerHTML = `
+      <div class="det-plate">${event.plate}</div>
+      <div class="det-meta">
+        <span>${event.vehicle?.owner_name ?? 'Sin registro'}</span>
+        <span>${new Date().toLocaleTimeString('es-PE')}</span>
+      </div>
+      <div class="det-tags">
+        <span class="badge bg-${tag}">${lbl}</span>
+        ${event.slot_code ? `<span class="badge bg-primary">${event.slot_code}</span>` : ''}
+        ${event.source === 'camera' ? `<span class="badge bg-secondary">Auto</span>` : ''}
+        <span class="badge bg-light text-dark">${pct}%</span>
+      </div>`;
+    list.insertBefore(card, list.firstChild);
+    while (list.children.length > 40) list.removeChild(list.lastChild);
+  },
+};
+
+function clearDets() {
+  const list = document.getElementById('det-list');
+  if (list) list.innerHTML = '<p class="text-center text-muted small py-4 mb-0">Lista limpiada</p>';
+}
+
+// ── API ──────────────────────────────────────────────────────────
+const API = {
+  async get(url) {
+    try {
+      const r = await fetch(url);
+      const j = await r.json();
+      return r.ok ? j : { ok: false, error: j.error ?? 'Error' };
+    } catch { return { ok: false, error: 'Network error' }; }
+  },
+  async post(url, body) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      return r.ok ? j : { ok: false, error: j.error ?? 'Error' };
+    } catch { return { ok: false, error: 'Network error' }; }
+  },
+  async del(url) {
+    try { return await (await fetch(url, { method: 'DELETE' })).json(); }
+    catch { return { ok: false }; }
+  },
+};
+
+// ── UTILS ─────────────────────────────────────────────────────────
+function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+function fmtDateTime(iso) { if (!iso) return '—'; return new Date(iso).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }); }
+function fmtTime(iso)     { if (!iso) return '—'; return new Date(iso).toLocaleTimeString('es-PE', { hour:'2-digit', minute:'2-digit' }); }
+function sleep(ms)        { return new Promise(r => setTimeout(r, ms)); }
+</file>
+
+<file path="templates/index.html">
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ParkVision</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+
+<div class="d-flex" id="wrapper">
+
+  <!-- SIDEBAR -->
+  <nav id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><i class="bi bi-camera-video-fill"></i></div>
+      <div>
+        <div class="brand-name">ParkVision</div>
+        <div class="brand-sub">SISTEMA DE PARQUEO</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">PRINCIPAL</div>
+    <a class="sidebar-link active" data-page="dashboard" onclick="nav('dashboard')">
+      <i class="bi bi-grid-1x2"></i> Dashboard
+    </a>
+    <a class="sidebar-link" data-page="camera" onclick="nav('camera')">
+      <i class="bi bi-camera-video"></i> Camara Live
+      <span class="badge bg-secondary ms-auto" id="cam-badge">OFF</span>
+    </a>
+    <a class="sidebar-link" data-page="scanner" onclick="nav('scanner')">
+      <i class="bi bi-upc-scan"></i> Escaner
+    </a>
+
+    <div class="sidebar-section mt-3">OPERACION</div>
+    <a class="sidebar-link" data-page="inside" onclick="nav('inside')">
+      <i class="bi bi-car-front"></i> Vehiculos Dentro
+      <span class="badge bg-success ms-auto" id="inside-badge">0</span>
+    </a>
+    <a class="sidebar-link" data-page="vehicles" onclick="nav('vehicles')">
+      <i class="bi bi-people"></i> Vehiculos
+    </a>
+    <a class="sidebar-link" data-page="history" onclick="nav('history')">
+      <i class="bi bi-clock-history"></i> Historial
+    </a>
+    <a class="sidebar-link" data-page="slots" onclick="nav('slots')">
+      <i class="bi bi-grid-3x3"></i> Planta
+    </a>
+
+    <div class="sidebar-footer">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-txt">Modo Demo</span>
+    </div>
+  </nav>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="pg-dashboard">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Dashboard</h4>
+          <p class="page-sub mb-0" id="clock">—</p>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" onclick="refreshAll()">
+          <i class="bi bi-arrow-clockwise"></i> Actualizar
+        </button>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card border-success">
+            <div class="stat-icon bg-success-subtle text-success"><i class="bi bi-p-square"></i></div>
+            <div><span class="stat-val" id="s-free">—</span><span class="stat-lbl">Espacios libres</span></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card border-primary">
+            <div class="stat-icon bg-primary-subtle text-primary"><i class="bi bi-car-front"></i></div>
+            <div><span class="stat-val" id="s-occ">—</span><span class="stat-lbl">Vehiculos dentro</span></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card border-purple">
+            <div class="stat-icon bg-purple-subtle text-purple"><i class="bi bi-calendar-check"></i></div>
+            <div><span class="stat-val" id="s-today">—</span><span class="stat-lbl">Entradas hoy</span></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card border-warning">
+            <div class="stat-icon bg-warning-subtle text-warning"><i class="bi bi-exclamation-triangle"></i></div>
+            <div><span class="stat-val text-warning" id="s-unk">—</span><span class="stat-lbl">Desconocidos hoy</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-lg-8">
+          <div class="card h-100">
+            <div class="card-header">Ultimas Detecciones</div>
+            <div class="card-body p-0">
+              <div id="dash-feed" class="feed-list">
+                <p class="text-center text-muted py-4 mb-0">Sin eventos aun</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-header">Ocupacion</div>
+            <div class="card-body d-flex flex-column align-items-center justify-content-center gap-3">
+              <div class="donut-wrap position-relative">
+                <svg width="150" height="150" viewBox="0 0 150 150">
+                  <circle cx="75" cy="75" r="55" fill="none" stroke="var(--bs-border-color)" stroke-width="10"/>
+                  <circle id="donut-arc" cx="75" cy="75" r="55" fill="none"
+                    stroke="var(--bs-success)" stroke-width="10" stroke-linecap="round"
+                    stroke-dasharray="0 346" stroke-dashoffset="87"
+                    transform="rotate(-90 75 75)" style="transition:stroke-dasharray 1s ease"/>
+                </svg>
+                <div class="donut-center">
+                  <span class="fw-bold fs-4 text-success" id="donut-pct">0%</span>
+                  <small class="text-muted">ocupado</small>
+                </div>
+              </div>
+              <div class="w-100">
+                <div class="d-flex justify-content-between mb-1 small">
+                  <span><span class="badge bg-success me-1">&nbsp;</span>Ocupado</span>
+                  <strong id="leg-occ">0</strong>
+                </div>
+                <div class="d-flex justify-content-between small">
+                  <span><span class="badge bg-secondary me-1">&nbsp;</span>Libre</span>
+                  <strong id="leg-free">0</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAMARA -->
+    <div class="page" id="pg-camera">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Camara en Tiempo Real</h4>
+          <p class="page-sub mb-0">Deteccion automatica de matriculas por movimiento</p>
+        </div>
+        <span class="badge rounded-pill" id="cam-status-pill">Desconectada</span>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="row g-3 align-items-end">
+            <div class="col-auto">
+              <label class="form-label fw-semibold small">Fuente de camara</label>
+              <select class="form-select form-select-sm" id="cam-mode" onchange="onCamModeChange()" style="min-width:200px">
+                <option value="browser">Camara del Navegador</option>
+                <option value="webcam">Webcam del Servidor</option>
+                <option value="ip">Camara IP / RTSP</option>
+              </select>
+            </div>
+            <div class="col-auto" id="cfg-index">
+              <label class="form-label fw-semibold small">Indice (0 = primera)</label>
+              <input type="number" class="form-control form-control-sm" id="cam-index" value="0" min="0" max="9" style="width:80px">
+            </div>
+            <div class="col" id="cfg-url" style="display:none">
+              <label class="form-label fw-semibold small">URL RTSP / HTTP</label>
+              <input type="text" class="form-control form-control-sm" id="cam-url" placeholder="rtsp://192.168.1.x:554/stream">
+            </div>
+            <div class="col-auto">
+              <button class="btn btn-success btn-sm" id="btn-cam" onclick="toggleCam()">
+                <i class="bi bi-play-fill"></i> Iniciar Camara
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-lg-8">
+          <div class="cam-wrap" id="cam-wrap">
+            <div class="cam-placeholder" id="cam-placeholder">
+              <i class="bi bi-camera-video-off fs-1 text-muted"></i>
+              <p class="text-muted mt-2">Selecciona una fuente e inicia la camara</p>
+            </div>
+            <img id="cam-mjpeg" style="display:none;width:100%;height:100%;object-fit:cover" src="">
+            <video id="cam-video" autoplay muted playsinline style="display:none;width:100%;height:100%;object-fit:cover"></video>
+            <canvas id="cam-canvas" style="display:none"></canvas>
+            <div id="cam-hud" style="display:none;position:absolute;inset:0;pointer-events:none">
+              <div class="hud-bar d-flex justify-content-between align-items-center px-3 py-1">
+                <small id="hud-clock" class="text-white-50 font-monospace">—</small>
+                <small id="hud-motion" class="text-success font-monospace fw-bold">EN VIVO</small>
+              </div>
+              <div class="hud-roi" id="hud-roi"></div>
+            </div>
+          </div>
+          <div class="card mt-2">
+            <div class="card-body py-2">
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <button class="btn btn-outline-secondary btn-sm" id="btn-capture" onclick="captureNow()" disabled>
+                  <i class="bi bi-camera"></i> Capturar
+                </button>
+                <span class="badge bg-dark font-monospace" id="chip-fps">FPS —</span>
+                <span class="badge bg-dark font-monospace" id="chip-res">— x —</span>
+                <span class="badge bg-secondary" id="chip-motion">SIN MOVIMIENTO</span>
+                <div class="form-check form-switch ms-auto mb-0">
+                  <input class="form-check-input" type="checkbox" id="auto-tog" checked>
+                  <label class="form-check-label small" for="auto-tog">Auto-deteccion</label>
+                </div>
+                <div class="d-flex align-items-center gap-2 small text-muted">
+                  Cooldown:
+                  <input type="range" class="form-range" id="cooldown" min="3" max="30" value="8"
+                    style="width:80px" oninput="document.getElementById('cool-val').textContent=this.value">
+                  <span id="cool-val">8</span>s
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span class="fw-semibold small">DETECCIONES</span>
+              <button class="btn btn-link btn-sm text-muted p-0" onclick="clearDets()">Limpiar</button>
+            </div>
+            <div id="det-list" class="det-list">
+              <p class="text-center text-muted small py-4 mb-0">Las detecciones apareceran aqui automaticamente</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ESCANER -->
+    <div class="page" id="pg-scanner">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Escaner de Matriculas</h4>
+          <p class="page-sub mb-0">Sube una imagen o ingresa la placa manualmente</p>
+        </div>
+      </div>
+      <div class="row g-4">
+        <div class="col-lg-6">
+          <div class="drop-zone" id="drop-zone">
+            <div id="drop-content">
+              <i class="bi bi-cloud-upload fs-1 text-muted"></i>
+              <p class="mt-2 mb-1">Arrastra una imagen del vehiculo</p>
+              <small class="text-muted">PNG, JPG, JPEG o haz clic para seleccionar</small>
+            </div>
+            <img id="preview-img" style="display:none;width:100%;border-radius:8px;object-fit:cover;max-height:280px">
+            <input type="file" id="file-in" accept="image/*" style="display:none">
+          </div>
+          <button class="btn btn-success w-100 mt-3" id="btn-scan" onclick="scanUpload()" disabled>
+            <i class="bi bi-upc-scan"></i> Reconocer Matricula
+          </button>
+          <div class="divider my-3"><span>o ingresa manualmente</span></div>
+          <div class="input-group">
+            <input type="text" class="form-control font-monospace" id="manual-plate"
+              placeholder="ABC-123" maxlength="12" oninput="this.value=this.value.toUpperCase()">
+            <button class="btn btn-outline-secondary" onclick="manualEntry()">Registrar</button>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="result-panel" id="result-panel">
+            <div class="text-center text-muted">
+              <i class="bi bi-card-text fs-1"></i>
+              <p class="mt-2">El resultado aparecera aqui</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DENTRO -->
+    <div class="page" id="pg-inside">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Vehiculos Dentro</h4>
+          <p class="page-sub mb-0">Actualizacion automatica cada 15 segundos</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-dark"><tr>
+              <th>Matricula</th><th>Propietario</th><th>Espacio</th>
+              <th>Entrada</th><th>Duracion</th><th>Estado</th>
+            </tr></thead>
+            <tbody id="inside-tbody">
+              <tr><td colspan="6" class="text-center text-muted py-4">No hay vehiculos dentro</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VEHICULOS -->
+    <div class="page" id="pg-vehicles">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Vehiculos Registrados</h4>
+          <p class="page-sub mb-0">Base de datos autorizada</p>
+        </div>
+        <button class="btn btn-success btn-sm" onclick="openVehicleModal()">
+          <i class="bi bi-plus-lg"></i> Agregar
+        </button>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-dark"><tr>
+              <th>Matricula</th><th>Propietario</th><th>Vehiculo</th>
+              <th>Color</th><th>Año</th><th>Estado</th><th></th>
+            </tr></thead>
+            <tbody id="vehicles-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORIAL -->
+    <div class="page" id="pg-history">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Historial de Accesos</h4>
+          <p class="page-sub mb-0">Registro completo de entradas y salidas</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-dark"><tr>
+              <th>Matricula</th><th>Propietario</th><th>Evento</th>
+              <th>Entrada</th><th>Salida</th><th>Espacio</th><th>Confianza</th><th>Fuente</th>
+            </tr></thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLANTA -->
+    <div class="page" id="pg-slots">
+      <div class="page-header">
+        <div>
+          <h4 class="page-title">Planta del Parqueo</h4>
+          <p class="page-sub mb-0">Vista de disponibilidad en tiempo real</p>
+        </div>
+      </div>
+      <h6 class="text-muted fw-semibold mb-2 text-uppercase small tracking-wide">Nivel A</h6>
+      <div class="slots-grid mb-4" id="slots-A"></div>
+      <h6 class="text-muted fw-semibold mb-2 text-uppercase small tracking-wide">Nivel B</h6>
+      <div class="slots-grid" id="slots-B"></div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /wrapper -->
+
+<!-- MODAL VEHICULO -->
+<div class="modal fade" id="vehicleModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Registrar Vehiculo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label small fw-semibold">Matricula *</label>
+            <input class="form-control" id="f-plate" oninput="this.value=this.value.toUpperCase()" placeholder="ABC-123"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Propietario</label>
+            <input class="form-control" id="f-name" placeholder="Nombre completo"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">N Documento</label>
+            <input class="form-control" id="f-doc" placeholder="DNI / RUC"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Marca</label>
+            <input class="form-control" id="f-brand" placeholder="Toyota, Kia..."></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Modelo</label>
+            <input class="form-control" id="f-model" placeholder="Corolla..."></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Color</label>
+            <input class="form-control" id="f-color" placeholder="Blanco, Negro..."></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Año</label>
+            <input class="form-control" id="f-year" type="number" placeholder="2024"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold">Tipo</label>
+            <select class="form-select" id="f-type">
+              <option value="car">Auto</option>
+              <option value="truck">Camioneta</option>
+              <option value="motorcycle">Moto</option>
+            </select></div>
+          <div class="col-12"><label class="form-label small fw-semibold">Notas</label>
+            <textarea class="form-control" id="f-notes" rows="2" placeholder="Observaciones..."></textarea></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success" onclick="saveVehicle()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="toast" class="toast" role="alert">
+    <div class="toast-header">
+      <strong class="me-auto font-monospace" id="toast-plate">—</strong>
+      <small id="toast-time">ahora</small>
+      <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+    </div>
+    <div class="toast-body" id="toast-info">—</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/main.js"></script>
+</body>
+</html>
+</file>
+
+</files>
