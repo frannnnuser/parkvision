@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: parkvision
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:///parkvision.db
+      - key: PLATE_RECOGNIZER_API_KEY
+        sync: false
+      - key: CAMERA_COOLDOWN
+        value: "8"
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: PORT
+        value: "5000"
